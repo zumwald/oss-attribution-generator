@@ -100,6 +100,7 @@ function getNpmLicenses() {
                             }).join(', '));
 
                         var licenseObject = {
+                            ignore: false,
                             name: package.name,
                             version: package.version,
                             authors: authors,
@@ -188,8 +189,9 @@ function getBowerLicenses() {
                         }
 
                         return {
+                            ignore: false,
                             name: package.name,
-                            version: package.version,
+                            version: package.version || package['_release'],
                             authors: authors,
                             url: url,
                             license: licenses,
@@ -211,27 +213,33 @@ bluebird.all([
         console.log(err)
     })    
     .spread((npmOutput, bowerOutput) => {
-        var o = _.transform(_.sortBy(_.concat(npmOutput, bowerOutput), (o) => {
-            return o.name;
-        }), (result, value) => {
-            result[value.name] = value;
+        var o = {};
+        _.concat(npmOutput, bowerOutput).forEach((v) => {
+            o[v.name] = v;
         });
 
         var userOverrides = jetpack.read(path.join(yargs.argv.baseDir, yargs.argv.outputDir, 'overrides.json'), 'json');
         console.log('using overrides:', userOverrides);
-        _.defaultsDeep(o, userOverrides);
+        // foreach override, loop through the properties and assign them to the base object.
+        _.each(Object.getOwnPropertyNames(userOverrides), (objKey) => {
+            _.each(Object.getOwnPropertyNames(userOverrides[objKey]), (objPropKey) => {
+                console.log('overriding', [objKey, objPropKey].join('.'), 'with', userOverrides[objKey][objPropKey]);
+                o[objKey][objPropKey] = userOverrides[objKey][objPropKey];
+            });
+        });
         return o;
     })
     .then((licenseInfo) => {
         var attribution = Object.getOwnPropertyNames(licenseInfo)
             .filter((key) => {
-                return _.isPlainObject(licenseInfo[key]);
+                console.log(key, 'ignore:', licenseInfo[key].ignore);
+                return _.isPlainObject(licenseInfo[key]) && !licenseInfo[key].ignore;
             })
             .map((key) => {
-                return `${licenseInfo[key].name}${licenseInfo[key].version ? ` (${licenseInfo[key].version})` : ''}\n`
+                return `${licenseInfo[key].name}\n${licenseInfo[key].version} <${licenseInfo[key].url}>\n`
                     + (licenseInfo[key].licenseText
                         || `license: ${licenseInfo[key].license}\nauthors: ${licenseInfo[key].authors}`);
-            }).join('\n\n**********\n\n');
+            }).join('\n\n******************************\n\n');
         
         if (jetpack.exists(path.join(yargs.argv.baseDir, yargs.argv.outputDir, 'header.txt'))) {
             var template = jetpack.read(path.join(yargs.argv.baseDir, yargs.argv.outputDir, 'header.txt'));
