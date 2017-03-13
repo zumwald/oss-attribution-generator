@@ -13,8 +13,8 @@ var yargs = require('yargs')
             default: process.cwd()
         }
     })
-    .example('$0 -o ./tpn', 'run the tool and output text and backing json to ${projectRoot}/tpn directory')
-    .example('$0 -b ./some/path/to/projectDir', 'run the tool for Bower/NPM projects in another directory. Note - the outputDir will still be relative to the directory generate-attribution is invoked from.')
+    .example('$0 -o ./tpn', 'run the tool and output text and backing json to ${projectRoot}/tpn directory.')
+    .example('$0 -b ./some/path/to/projectDir', 'run the tool for Bower/NPM projects in another directory.')
     .example('$0 -o tpn -b ./some/path/to/projectDir', 'run the tool in some other directory and dump the output in a directory called "tpn" there.');
 
 if (yargs.argv.help) {
@@ -54,46 +54,47 @@ function getAttributionForAuthor(a) {
 
 function getNpmLicenses() {
     // first - check that this is even a bower project
-    if (!jetpack.exists(path.join(yargs.argv.baseDir, 'package.json'))) {
+    if (!jetpack.exists(path.join(options.baseDir, 'package.json'))) {
         console.log('this does not look like an NPM project, skipping NPM checks.');
         return [];
     }
 
     return bluebird.fromCallback((cb) => {
         return npmchecker.init({
-            start: yargs.argv.baseDir,
+            start: options.baseDir,
             production: true,
             customFormat: licenseCheckerCustomFormat
         }, cb);
     })
     .then((result) => {
         // we want to exclude the top-level project from being included
-        var topLevelProjectInfo = jetpack.read(path.join(yargs.argv.baseDir, 'package.json'), 'json');
+        var topLevelProjectInfo = jetpack.read(path.join(options.baseDir, 'package.json'), 'json');
         var keys = Object.getOwnPropertyNames(result).filter((k) => {
             return k !== `${topLevelProjectInfo.name}@${topLevelProjectInfo.version}`;
         });
 
         return bluebird.map(keys, (key) => {
+            console.log('processing', key);
             var package = result[key];
-            return bluebird.try(() => {
-                return cp.execSync(`node -e "console.log(require.resolve('${package.name}'))"`, {
-                    cwd: yargs.argv.baseDir,
-                    encoding: 'utf8'
-                });
+            return jetpack.findAsync(path.join(options.baseDir, 'node_modules'), {
+                matching: `**/${package.name}`,
+                directories: true,
+                files: false
             })
-            .then((resolution) => {
-                resolution = resolution.trim();
-                if (jetpack.exists(resolution)) {
-                    return resolution;
-                } else {
-                    // probably a core module, take a guess at it's path
-                    var possiblePath = path.join(yargs.argv.baseDir, 'node_modules', package.name);
-                    return jetpack.exists(possiblePath) ? possiblePath : resolution;
+            .then((hits) => {
+                var pathToExport = '';
+                if (hits && hits.length && hits.length > 0) {
+                    pathToExport = path.resolve(hits[0].trim());
+                    if (jetpack.exists(pathToExport)) {
+                        return pathToExport;
+                    }
                 }
+                // probably a core module, take a guess at it's path
+                var possiblePath = path.resolve(path.join(options.baseDir, 'node_modules', package.name));
+                return jetpack.exists(possiblePath) ? possiblePath : resolution;
             })
-            .then((packagePathExport) => {
-                var nodeModulesPath = path.join(packagePathExport.slice(0, packagePathExport.lastIndexOf('node_modules')), 'node_modules');
-                var packageJsonPath = path.join(nodeModulesPath, package.name, 'package.json');
+            .then((packagePath) => {
+                var packageJsonPath = path.join(packagePath, 'package.json');
                 return jetpack.read(packageJsonPath, 'json');
             })
             .then((packageJson) => {
@@ -143,12 +144,12 @@ function getNpmLicenses() {
  */
 function getBowerLicenses() {
     // first - check that this is even a bower project
-    if (!jetpack.exists(path.join(yargs.argv.baseDir, 'bower.json'))) {
+    if (!jetpack.exists(path.join(options.baseDir, 'bower.json'))) {
         console.log('this does not look like a Bower project, skipping Bower checks.');
         return [];
     }
 
-    bower.config.cwd = yargs.argv.baseDir;
+    bower.config.cwd = options.baseDir;
     var bowerComponentsDir = path.join(bower.config.cwd, bower.config.directory);
     return jetpack.inspectTreeAsync(bowerComponentsDir, { relativePath: true })
         .then((result) => {
@@ -216,9 +217,18 @@ function getBowerLicenses() {
         });
 }
 
-/**
+/***********************
+ *
  * MAIN
- */
+ *
+ ***********************/
+
+// sanitize inputs
+var options = {
+    baseDir: path.resolve(yargs.argv.baseDir),
+    outputDir: path.resolve(path.join(yargs.argv.baseDir, yargs.argv.outputDir))
+};
+
 bluebird.all([
     getNpmLicenses(),
     getBowerLicenses()
@@ -232,15 +242,19 @@ bluebird.all([
         o[v.name] = v;
     });
 
-    var userOverrides = jetpack.read(path.join(yargs.argv.baseDir, yargs.argv.outputDir, 'overrides.json'), 'json');
-    console.log('using overrides:', userOverrides);
-    // foreach override, loop through the properties and assign them to the base object.
-    _.each(Object.getOwnPropertyNames(userOverrides), (objKey) => {
-        _.each(Object.getOwnPropertyNames(userOverrides[objKey]), (objPropKey) => {
-            console.log('overriding', [objKey, objPropKey].join('.'), 'with', userOverrides[objKey][objPropKey]);
-            o[objKey][objPropKey] = userOverrides[objKey][objPropKey];
+    var userOverridesPath = path.join(options.outputDir, 'overrides.json');
+    if (jetpack.exists(userOverridesPath)) {
+        var userOverrides = jetpack.read(userOverridesPath, 'json');
+        console.log('using overrides:', userOverrides);
+        // foreach override, loop through the properties and assign them to the base object.
+        _.each(Object.getOwnPropertyNames(userOverrides), (objKey) => {
+            _.each(Object.getOwnPropertyNames(userOverrides[objKey]), (objPropKey) => {
+                console.log('overriding', [objKey, objPropKey].join('.'), 'with', userOverrides[objKey][objPropKey]);
+                o[objKey][objPropKey] = userOverrides[objKey][objPropKey];
+            });
         });
-    });
+    }
+    
     return o;
 })
 .then((licenseInfo) => {
@@ -255,19 +269,19 @@ bluebird.all([
                     || `license: ${licenseInfo[key].license}\nauthors: ${licenseInfo[key].authors}`);
         }).join('\n\n******************************\n\n');
     
-    if (jetpack.exists(path.join(yargs.argv.baseDir, yargs.argv.outputDir, 'header.txt'))) {
-        var template = jetpack.read(path.join(yargs.argv.baseDir, yargs.argv.outputDir, 'header.txt'));
+    var headerPath = path.join(options.outputDir, 'header.txt');
+    if (jetpack.exists(headerPath)) {
+        var template = jetpack.read(headerPath);
         console.log('using template', template);
         attribution = template + '\n\n' + attribution;
     }
 
-    return jetpack.write(path.join(yargs.argv.baseDir, yargs.argv.outputDir, 'attribution.txt'), attribution);
+    return jetpack.write(path.join(options.outputDir, 'attribution.txt'), attribution);
 })
 .then(() => {
     console.log('done');
     process.exit();
 })
-.finally((err) => {
-    console.error(err);
+.finally(() => {
     process.exit(1);
 });
