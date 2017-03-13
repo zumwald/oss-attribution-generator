@@ -30,6 +30,7 @@ var bower = require('bower');
 var path = require('path');
 var jetpack = require('fs-jetpack');
 var cp = require('child_process');
+var os = require('os');
 
 // const
 var licenseCheckerCustomFormat = {
@@ -264,16 +265,16 @@ bluebird.all([
             return _.isPlainObject(licenseInfo[key]) && !licenseInfo[key].ignore;
         })
         .map((key) => {
-            return `${licenseInfo[key].name}\n${licenseInfo[key].version} <${licenseInfo[key].url}>\n`
+            return `${licenseInfo[key].name}${os.EOL}${licenseInfo[key].version} <${licenseInfo[key].url}>${os.EOL}`
                 + (licenseInfo[key].licenseText
-                    || `license: ${licenseInfo[key].license}\nauthors: ${licenseInfo[key].authors}`);
-        }).join('\n\n******************************\n\n');
+                    || `license: ${licenseInfo[key].license}${os.EOL}authors: ${licenseInfo[key].authors}`);
+        }).join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
     
     var headerPath = path.join(options.outputDir, 'header.txt');
     if (jetpack.exists(headerPath)) {
         var template = jetpack.read(headerPath);
         console.log('using template', template);
-        attribution = template + '\n\n' + attribution;
+        attribution = template + os.EOL + os.EOL + attribution;
     }
 
     return jetpack.write(path.join(options.outputDir, 'attribution.txt'), attribution);
