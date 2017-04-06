@@ -35,6 +35,7 @@ Other times, you may need to supply your own text for the purpose of the attribu
     "url": "https://thatwebsite.com/since/their/original/link/was/broken",
     "license": "MIT",
     "licenseText": "you can even override the license text in case the original contents of the LICENSE file were wrong for some reason"
+  }
 }
 ```
 
