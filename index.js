@@ -99,9 +99,11 @@ function getNpmLicenses() {
                 return jetpack.read(packageJsonPath, 'json');
             })
             .then((packageJson) => {
-                console.log('processing', packageJson.name);
+                console.log('processing', packageJson.name, 'for authors and licenseText');
 
-                var authors = packageJson.author && getAttributionForAuthor(packageJson.author)
+                var props = {};
+
+                props.authors = packageJson.author && getAttributionForAuthor(packageJson.author)
                     || (packageJson.contributors && packageJson.contributors.map((c) => {
                         return getAttributionForAuthor(c);
                     }).join(', '))
@@ -109,21 +111,26 @@ function getNpmLicenses() {
                         return getAttributionForAuthor(m);
                     }).join(', '));
 
-                var licenseObject = {
+                props.licenseText = package.licenseFile && jetpack.exists(package.licenseFile) ? jetpack.read(package.licenseFile) : '';
+                return props;
+            })
+            .catch(e => {
+                console.warn('error processing', package.name, '-- missing author and license text fields');
+                return {
+                    authors: '',
+                    licenseText: ''
+                };
+            })
+            .then(derivedProps => {
+                return {
                     ignore: false,
                     name: package.name,
                     version: package.version,
-                    authors: authors,
+                    authors: derivedProps.authors,
                     url: package.repository,
                     license: package.licenses,
-                    licenseText: ''
+                    licenseText: derivedProps.licenseText
                 };
-
-                if (package.licenseFile && jetpack.exists(package.licenseFile)) {
-                    licenseObject.licenseText = jetpack.read(package.licenseFile);
-                }
-
-                return licenseObject;
             });
         });
     });
@@ -235,7 +242,8 @@ bluebird.all([
     getBowerLicenses()
 ])
 .catch((err) => {
-    console.log(err)
+    console.log(err);
+    process.exit(1);
 })    
 .spread((npmOutput, bowerOutput) => {
     var o = {};
@@ -248,27 +256,25 @@ bluebird.all([
         var userOverrides = jetpack.read(userOverridesPath, 'json');
         console.log('using overrides:', userOverrides);
         // foreach override, loop through the properties and assign them to the base object.
-        _.each(Object.getOwnPropertyNames(userOverrides), (objKey) => {
-            _.each(Object.getOwnPropertyNames(userOverrides[objKey]), (objPropKey) => {
-                console.log('overriding', [objKey, objPropKey].join('.'), 'with', userOverrides[objKey][objPropKey]);
-                o[objKey][objPropKey] = userOverrides[objKey][objPropKey];
-            });
-        });
+        o = _.defaultsDeep(userOverrides, o);
     }
     
     return o;
 })
-.then((licenseInfo) => {
-    var attribution = Object.getOwnPropertyNames(licenseInfo)
-        .filter((key) => {
-            console.log(key, 'ignore:', licenseInfo[key].ignore);
-            return _.isPlainObject(licenseInfo[key]) && !licenseInfo[key].ignore;
-        })
-        .map((key) => {
-            return `${licenseInfo[key].name}${os.EOL}${licenseInfo[key].version} <${licenseInfo[key].url}>${os.EOL}`
-                + (licenseInfo[key].licenseText
-                    || `license: ${licenseInfo[key].license}${os.EOL}authors: ${licenseInfo[key].authors}`);
-        }).join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
+.catch(e => {
+    console.error('ERROR processing overrides', e);
+    process.exit(1);
+})
+.then((licenseInfos) => {
+    var attribution = _.filter(licenseInfos, licenseInfo => {
+        return !licenseInfo.ignore;
+    }).map(licenseInfo => {
+        return [
+                licenseInfo.name,
+                `${licenseInfo.version} <${licenseInfo.url}>`,
+                licenseInfo.licenseText || `license: ${licenseInfo.license}${os.EOL}authors: ${licenseInfo.authors}`
+            ].join(os.EOL);
+    }).join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
     
     var headerPath = path.join(options.outputDir, 'header.txt');
     if (jetpack.exists(headerPath)) {
@@ -279,10 +285,11 @@ bluebird.all([
 
     return jetpack.write(path.join(options.outputDir, 'attribution.txt'), attribution);
 })
+.catch(e => {
+    console.error('ERROR writing attribution file', e);
+    process.exit(1);
+})
 .then(() => {
     console.log('done');
     process.exit();
-})
-.finally(() => {
-    process.exit(1);
 });
