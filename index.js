@@ -78,7 +78,7 @@ function getNpmLicenses() {
             console.log('processing', key);
             var package = result[key];
             return jetpack.findAsync(options.baseDir, {
-                matching: `**/node_modules${package.name}`,
+                matching: `**/node_modules/${package.name}`,
                 directories: true,
                 files: false
             })
