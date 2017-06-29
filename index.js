@@ -77,8 +77,8 @@ function getNpmLicenses() {
         return bluebird.map(keys, (key) => {
             console.log('processing', key);
             var package = result[key];
-            return jetpack.findAsync(path.join(options.baseDir, 'node_modules'), {
-                matching: `**/${package.name}`,
+            return jetpack.findAsync(options.baseDir, {
+                matching: `**/node_modules/${package.name}`,
                 directories: true,
                 files: false
             })
