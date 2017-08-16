@@ -78,25 +78,14 @@ function getNpmLicenses() {
             console.log('processing', key);
             var package = result[key];
             return jetpack.findAsync(options.baseDir, {
-                matching: `**/node_modules/${package.name}`,
-                directories: true,
-                files: false
+                matching: `**/node_modules/${package.name}/package.json`
             })
-            .then((hits) => {
-                var pathToExport = '';
-                if (hits && hits.length && hits.length > 0) {
-                    pathToExport = path.resolve(hits[0].trim());
-                    if (jetpack.exists(pathToExport)) {
-                        return pathToExport;
-                    }
-                }
-                // probably a core module, take a guess at it's path
-                var possiblePath = path.resolve(path.join(options.baseDir, 'node_modules', package.name));
-                return jetpack.exists(possiblePath) ? possiblePath : resolution;
-            })
-            .then((packagePath) => {
-                var packageJsonPath = path.join(packagePath, 'package.json');
-                return jetpack.read(packageJsonPath, 'json');
+            .then(packagePath => {
+                if (packagePath && packagePath[0]){
+                    return jetpack.read(packagePath[0], 'json');
+                }else{
+                    return Promise.reject(`${package.name}: unable to locate package.json`);
+                }                
             })
             .then((packageJson) => {
                 console.log('processing', packageJson.name, 'for authors and licenseText');
@@ -115,7 +104,7 @@ function getNpmLicenses() {
                 return props;
             })
             .catch(e => {
-                console.warn('error processing', package.name, '-- missing author and license text fields');
+                console.warn(e);
                 return {
                     authors: '',
                     licenseText: ''
