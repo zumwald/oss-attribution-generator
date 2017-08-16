@@ -12,7 +12,7 @@
   },
   "name": "oss-attribution-generator",
   "description": "utility to parse bower and npm packages used in a project and generate an attribution file to include in your product",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "bin": {
     "generate-attribution": "index.js"
   },
