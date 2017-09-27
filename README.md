@@ -5,11 +5,34 @@ utility to parse bower and npm packages used in a project and generate an attrib
 `npm i -g oss-attribution-generator`
 
 ## Usage
+
+### For a single Bower or Node project
 ```
 cd pathToYourProject
 generate-attribution
 git add ./oss-attribution
 git commit -m 'adding open source attribution output from oss-attribution-generator'
+```
+
+### For multiple projects
+
+*(This feature is currently only supported for Node projects)*
+
+For Node.js projects that use other Node.js projects located in different directories, the `-b` option can be used to provide a variable number of input directories. Each of the input directories are processed, and any duplicate entries (dependencies with same name and version number) are combined to produce a single attribution text.
+
+```
+cd pathToYourMainProject
+generate-attribution -b pathToYourMainProject pathToYourFirstProjectDependency pathToYourSecondProjectDependency
+git add ./oss-attribution
+git commit -m 'adding open source attribution output from oss-attribution-generator'
+```
+
+### Help
+
+Use the `--help` argument to get further usage details about the various program arguments:
+
+```
+generate-attribution --help
 ```
 
 ### Understanding the "overrides"

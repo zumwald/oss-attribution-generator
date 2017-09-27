@@ -9,7 +9,11 @@
             "request": "launch",
             "name": "test-project",
             "program": "${workspaceRoot}/index.js",
-            "cwd": "${workspaceRoot}/test-project"
+            "cwd": "${workspaceRoot}/test-project",
+            "args": [
+                "-b",
+                "${workspaceRoot}/test-project"
+            ]
         }
     ]
 }

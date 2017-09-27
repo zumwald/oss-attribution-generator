@@ -10,9 +10,10 @@ var yargs = require('yargs')
         },
         baseDir: {
             alias: 'b',
-            default: process.cwd()
+            default: process.cwd(),
         }
     })
+    .array('baseDir')
     .example('$0 -o ./tpn', 'run the tool and output text and backing json to ${projectRoot}/tpn directory.')
     .example('$0 -b ./some/path/to/projectDir', 'run the tool for Bower/NPM projects in another directory.')
     .example('$0 -o tpn -b ./some/path/to/projectDir', 'run the tool in some other directory and dump the output in a directory called "tpn" there.');
@@ -54,80 +55,120 @@ function getAttributionForAuthor(a) {
 }
 
 function getNpmLicenses() {
-    // first - check that this is even a bower project
-    if (!jetpack.exists(path.join(options.baseDir, 'package.json'))) {
-        console.log('this does not look like an NPM project, skipping NPM checks.');
+    var npmDirs;
+    if (!Array.isArray(options.baseDir)) {
+        npmDirs = [options.baseDir];
+    } else {
+        npmDirs = options.baseDir;
+    }
+    // first - check that this is even an NPM project
+    for (var i = 0; i < npmDirs.length; i++) {
+        if (!jetpack.exists(path.join(npmDirs[i], 'package.json'))) {
+            console.log('directory at "' + npmDirs[i] + '" does not look like an NPM project, skipping NPM checks for path ' + npmDirs[i]);
+            return [];
+        }
+    }
+    console.log("Looking at directories: " + npmDirs)
+
+    var res = []
+    var checkers = [];
+    for (var i = 0; i < npmDirs.length; i++) {
+        checkers.push(
+            bluebird.fromCallback((cb) => {
+                var dir = npmDirs[i];
+                return npmchecker.init({
+                    start: npmDirs[i],
+                    production: true,
+                    customFormat: licenseCheckerCustomFormat
+                }, function (err, json) {
+                    if (err) {
+                        //Handle error
+                        console.error(err);
+                    } else {
+                        Object.getOwnPropertyNames(json).forEach(k => {
+                            json[k]['dir'] = dir;
+                        })
+                    }
+                    cb(err, json);
+                });
+            })
+        );
+    }
+    if (checkers.length === 0) {
         return [];
     }
 
-    return bluebird.fromCallback((cb) => {
-        return npmchecker.init({
-            start: options.baseDir,
-            production: true,
-            customFormat: licenseCheckerCustomFormat
-        }, cb);
-    })
-    .then((result) => {
-        // we want to exclude the top-level project from being included
-        var topLevelProjectInfo = jetpack.read(path.join(options.baseDir, 'package.json'), 'json');
-        var keys = Object.getOwnPropertyNames(result).filter((k) => {
-            return k !== `${topLevelProjectInfo.name}@${topLevelProjectInfo.version}`;
-        });
+    return bluebird.all(checkers)
+        .then((raw_result) => {
+            // the result is passed in as an array, one element per npmDir passed in
+            // de-dupe the entries and merge it into a single object
+            var merged = {};
+            for (var i = 0; i < raw_result.length; i++) {
+                merged = Object.assign(raw_result[i], merged);
+            }
+            return merged;
+        }).then((result) => {
+            // we want to exclude the top-level project from being included
+            var dir = result[Object.keys(result)[0]]['dir'];
+            var topLevelProjectInfo = jetpack.read(path.join(dir, 'package.json'), 'json');
+            var keys = Object.getOwnPropertyNames(result).filter((k) => {
+                return k !== `${topLevelProjectInfo.name}@${topLevelProjectInfo.version}`;
+            });
 
-        return bluebird.map(keys, (key) => {
-            console.log('processing', key);
-            var package = result[key];
-            return jetpack.findAsync(options.baseDir, {
-                matching: `**/node_modules/${package.name}/package.json`
-            })
-            .then(packagePath => {
-                if (packagePath && packagePath[0]){
-                    return jetpack.read(packagePath[0], 'json');
-                }else{
-                    return Promise.reject(`${package.name}: unable to locate package.json`);
-                }                
-            })
-            .then((packageJson) => {
-                console.log('processing', packageJson.name, 'for authors and licenseText');
+            return bluebird.map(keys, (key) => {
+                console.log('processing', key);
+                var package = result[key];
+                return jetpack.findAsync(package['dir'], {
+                    matching: `**/node_modules/${package.name}/package.json`
+                })
+                    .then(packagePath => {
+                        if (packagePath && packagePath[0]) {
+                            return jetpack.read(packagePath[0], 'json');
+                        } else {
+                            return Promise.reject(`${package.name}: unable to locate package.json`);
+                        }
+                    })
+                    .then((packageJson) => {
+                        console.log('processing', packageJson.name, 'for authors and licenseText');
 
-                var props = {};
+                        var props = {};
 
-                props.authors = packageJson.author && getAttributionForAuthor(packageJson.author)
-                    || (packageJson.contributors && packageJson.contributors.map((c) => {
-                        return getAttributionForAuthor(c);
-                    }).join(', '))
-                    || (packageJson.maintainers && packageJson.maintainers.map((m) => {
-                        return getAttributionForAuthor(m);
-                    }).join(', '));
+                        props.authors = packageJson.author && getAttributionForAuthor(packageJson.author)
+                            || (packageJson.contributors && packageJson.contributors.map((c) => {
+                                return getAttributionForAuthor(c);
+                            }).join(', '))
+                            || (packageJson.maintainers && packageJson.maintainers.map((m) => {
+                                return getAttributionForAuthor(m);
+                            }).join(', '));
 
-                props.licenseText = package.licenseFile && jetpack.exists(package.licenseFile) ? jetpack.read(package.licenseFile) : '';
-                return props;
-            })
-            .catch(e => {
-                console.warn(e);
-                return {
-                    authors: '',
-                    licenseText: ''
-                };
-            })
-            .then(derivedProps => {
-                return {
-                    ignore: false,
-                    name: package.name,
-                    version: package.version,
-                    authors: derivedProps.authors,
-                    url: package.repository,
-                    license: package.licenses,
-                    licenseText: derivedProps.licenseText
-                };
+                        props.licenseText = package.licenseFile && jetpack.exists(package.licenseFile) ? jetpack.read(package.licenseFile) : '';
+                        return props;
+                    })
+                    .catch(e => {
+                        console.warn(e);
+                        return {
+                            authors: '',
+                            licenseText: ''
+                        };
+                    })
+                    .then(derivedProps => {
+                        return {
+                            ignore: false,
+                            name: package.name,
+                            version: package.version,
+                            authors: derivedProps.authors,
+                            url: package.repository,
+                            license: package.licenses,
+                            licenseText: derivedProps.licenseText
+                        };
+                    });
             });
         });
-    });
 }
 
 /**
  * TL;DR - normalizing the output format for NPM & Bower license info
- * 
+ *
  * The output from license-checker gives us what we need:
  *  - component name
  *  - version
@@ -135,18 +176,26 @@ function getNpmLicenses() {
  *  - url
  *  - license(s)
  *  - license contents OR license snippet (in case of license embedded in markdown)
- * 
+ *
  * Where we calculate the license information manually for Bower components,
  * we'll return an object with these properties.
  */
 function getBowerLicenses() {
     // first - check that this is even a bower project
-    if (!jetpack.exists(path.join(options.baseDir, 'bower.json'))) {
+    var baseDir;
+    if (Array.isArray(options.baseDir)) {
+        baseDir = options.baseDir[0];
+        if (options.baseDir.length > 1) {
+            console.warn("Checking multiple directories is not yet supported for Bower projects.\n" +
+                "Checking only the first directory: " + baseDir);
+        }
+    }
+    if (!jetpack.exists(path.join(baseDir, 'bower.json'))) {
         console.log('this does not look like a Bower project, skipping Bower checks.');
         return [];
     }
 
-    bower.config.cwd = options.baseDir;
+    bower.config.cwd = baseDir;
     var bowerComponentsDir = path.join(bower.config.cwd, bower.config.directory);
     return jetpack.inspectTreeAsync(bowerComponentsDir, { relativePath: true })
         .then((result) => {
@@ -179,7 +228,7 @@ function getBowerLicenses() {
                                 return getAttributionForAuthor(a);
                             }).join(', ');
                         } else {
-                            // extrapolate author from url if it's a git repository
+                            // extrapolate author from url if it's a github repository
                             var githubMatch = url.match(/github\.com\/.*\//);
                             if (githubMatch) {
                                 authors = githubMatch[0].replace('github.com', '').replace(/\//g, '');
@@ -189,7 +238,7 @@ function getBowerLicenses() {
                         // normalize the license object
                         package.license = package.license || package.licenses;
                         var licenses = package.license && _.isString(package.license) ? package.license
-                                : (_.isArray(package.license) ? package.license.join(',') : package.licenses);
+                            : (_.isArray(package.license) ? package.license.join(',') : package.licenses);
 
                         // find the license file if it exists
                         var licensePath = _.find(component.children, (c) => {
@@ -222,63 +271,72 @@ function getBowerLicenses() {
 
 // sanitize inputs
 var options = {
-    baseDir: path.resolve(yargs.argv.baseDir),
-    outputDir: path.resolve(path.join(yargs.argv.baseDir, yargs.argv.outputDir))
+    baseDir: [],
+    outputDir: path.resolve(yargs.argv.outputDir)
 };
+
+for (var i = 0; i < yargs.argv.baseDir.length; i++) {
+    options.baseDir.push(path.resolve(yargs.argv.baseDir[i]));
+}
+
 
 bluebird.all([
     getNpmLicenses(),
     getBowerLicenses()
 ])
-.catch((err) => {
-    console.log(err);
-    process.exit(1);
-})    
-.spread((npmOutput, bowerOutput) => {
-    var o = {};
-    _.concat(npmOutput, bowerOutput).forEach((v) => {
-        o[v.name] = v;
-    });
+    .catch((err) => {
+        console.log(err);
+        process.exit(1);
+    })
+    .spread((npmOutput, bowerOutput) => {
+        var o = {};
+        npmOutput = npmOutput || {};
+        bowerOutput = bowerOutput || {};
+        _.concat(npmOutput, bowerOutput).forEach((v) => {
+            o[v.name] = v;
+        });
 
-    var userOverridesPath = path.join(options.outputDir, 'overrides.json');
-    if (jetpack.exists(userOverridesPath)) {
-        var userOverrides = jetpack.read(userOverridesPath, 'json');
-        console.log('using overrides:', userOverrides);
-        // foreach override, loop through the properties and assign them to the base object.
-        o = _.defaultsDeep(userOverrides, o);
-    }
-    
-    return o;
-})
-.catch(e => {
-    console.error('ERROR processing overrides', e);
-    process.exit(1);
-})
-.then((licenseInfos) => {
-    var attribution = _.filter(licenseInfos, licenseInfo => {
-        return !licenseInfo.ignore;
-    }).map(licenseInfo => {
-        return [
+        var userOverridesPath = path.join(options.outputDir, 'overrides.json');
+        if (jetpack.exists(userOverridesPath)) {
+            var userOverrides = jetpack.read(userOverridesPath, 'json');
+            console.log('using overrides:', userOverrides);
+            // foreach override, loop through the properties and assign them to the base object.
+            o = _.defaultsDeep(userOverrides, o);
+        }
+
+        return o;
+    })
+    .catch(e => {
+        console.error('ERROR processing overrides', e);
+        process.exit(1);
+    })
+    .then((licenseInfos) => {
+        var attribution = _.filter(licenseInfos, licenseInfo => {
+            return !licenseInfo.ignore;
+        }).map(licenseInfo => {
+            return [
                 licenseInfo.name,
                 `${licenseInfo.version} <${licenseInfo.url}>`,
                 licenseInfo.licenseText || `license: ${licenseInfo.license}${os.EOL}authors: ${licenseInfo.authors}`
             ].join(os.EOL);
-    }).join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
-    
-    var headerPath = path.join(options.outputDir, 'header.txt');
-    if (jetpack.exists(headerPath)) {
-        var template = jetpack.read(headerPath);
-        console.log('using template', template);
-        attribution = template + os.EOL + os.EOL + attribution;
-    }
+        }).join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
 
-    return jetpack.write(path.join(options.outputDir, 'attribution.txt'), attribution);
-})
-.catch(e => {
-    console.error('ERROR writing attribution file', e);
-    process.exit(1);
-})
-.then(() => {
-    console.log('done');
-    process.exit();
-});
+        var headerPath = path.join(options.outputDir, 'header.txt');
+        if (jetpack.exists(headerPath)) {
+            var template = jetpack.read(headerPath);
+            console.log('using template', template);
+            attribution = template + os.EOL + os.EOL + attribution;
+        }
+
+        jetpack.write(path.join(options.outputDir, 'licenseInfos.json'), JSON.stringify(licenseInfos));
+
+        return jetpack.write(path.join(options.outputDir, 'attribution.txt'), attribution);
+    })
+    .catch(e => {
+        console.error('ERROR writing attribution file', e);
+        process.exit(1);
+    })
+    .then(() => {
+        console.log('done');
+        process.exit();
+    });
