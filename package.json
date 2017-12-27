@@ -11,29 +11,33 @@
     "yargs": "^7.0.2"
   },
   "name": "oss-attribution-generator",
-  "description": "utility to parse bower and npm packages used in a project and generate an attribution file to include in your product",
+  "description":
+    "utility to parse bower and npm packages used in a project and generate an attribution file to include in your product",
   "version": "1.4.0",
   "bin": {
     "generate-attribution": "index.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prettier": "prettier --write *.{js,json,md}"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zumwald/oss-attribution-generator.git"
   },
-  "keywords": [
-    "license",
-    "attribution",
-    "npm",
-    "bower",
-    "credit"
-  ],
+  "keywords": ["license", "attribution", "npm", "bower", "credit"],
   "author": "Dan Zumwalt",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/zumwald/oss-attribution-generator/issues"
   },
-  "homepage": "https://github.com/zumwald/oss-attribution-generator#readme"
+  "homepage": "https://github.com/zumwald/oss-attribution-generator#readme",
+  "devDependencies": {
+    "husky": "^0.14.3",
+    "lint-staged": "^6.0.0",
+    "prettier": "^1.9.2"
+  },
+  "lint-staged": {
+    "*.{js,json,md}": ["prettier -l"]
+  }
 }
