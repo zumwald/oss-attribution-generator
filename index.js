@@ -162,6 +162,8 @@ function getNpmLicenses() {
                             licenseText: derivedProps.licenseText
                         };
                     });
+            }, {
+                concurrency: os.cpus().length
             });
         });
 }
@@ -259,6 +261,8 @@ function getBowerLicenses() {
                             licenseText: licenseText
                         };
                     });
+            }, {
+                concurrency: os.cpus().length
             });
         });
 }
