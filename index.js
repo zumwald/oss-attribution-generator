@@ -118,9 +118,17 @@ function getNpmLicenses() {
             return bluebird.map(keys, (key) => {
                 console.log('processing', key);
                 var package = result[key];
-                return jetpack.findAsync(package['dir'], {
-                    matching: `**/node_modules/${package.name}/package.json`
-                })
+                var defaultPackagePath = `${package['dir']}/node_modules/${package.name}/package.json`
+                return jetpack.existsAsync(defaultPackagePath)
+                    .then(itemAtPath => {
+                        if (itemAtPath === 'file') {
+                            return [defaultPackagePath]
+                        } else {
+                            return jetpack.findAsync(package['dir'], {
+                                matching: `**/node_modules/${package.name}/package.json`
+                            })
+                        }
+                    })
                     .then(packagePath => {
                         if (packagePath && packagePath[0]) {
                             return jetpack.read(packagePath[0], 'json');
@@ -162,6 +170,8 @@ function getNpmLicenses() {
                             licenseText: derivedProps.licenseText
                         };
                     });
+            }, {
+                concurrency: os.cpus().length
             });
         });
 }
@@ -259,6 +269,8 @@ function getBowerLicenses() {
                             licenseText: licenseText
                         };
                     });
+            }, {
+                concurrency: os.cpus().length
             });
         });
 }
