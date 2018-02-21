@@ -117,8 +117,7 @@ function getNpmLicenses() {
             });
 
             return bluebird.map(keys, (key) => {
-                //console.log('processing', key);
-               // console.log(result[key].licenseFile)
+                console.log('processing', key);
                 var package = result[key];
                 var defaultPackagePath = `${package['dir']}/node_modules/${package.name}/package.json`
                 return jetpack.existsAsync(defaultPackagePath)
@@ -139,7 +138,7 @@ function getNpmLicenses() {
                         }
                     })
                     .then((packageJson) => {
-                        //console.log('processing', packageJson.name, 'for authors and licenseText');
+                        console.log('processing', packageJson.name, 'for authors and licenseText');
 
                         var props = {};
 
