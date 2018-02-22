@@ -32,6 +32,7 @@ var path = require('path');
 var jetpack = require('fs-jetpack');
 var cp = require('child_process');
 var os = require('os');
+var taim = require('taim');
 
 // const
 var licenseCheckerCustomFormat = {
@@ -300,10 +301,10 @@ for (var i = 0; i < yargs.argv.baseDir.length; i++) {
 }
 
 
-bluebird.all([
-    getNpmLicenses(),
+taim('Total Processing', bluebird.all([
+    taim('Npm Licenses', getNpmLicenses()),
     getBowerLicenses()
-])
+]))
     .catch((err) => {
         console.log(err);
         process.exit(1);
