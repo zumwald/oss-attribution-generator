@@ -118,6 +118,7 @@ function getNpmLicenses() {
 
             return bluebird.map(keys, (key) => {
                 console.log('processing', key);
+               
                 var package = result[key];
                 var defaultPackagePath = `${package['dir']}/node_modules/${package.name}/package.json`
                 return jetpack.existsAsync(defaultPackagePath)
@@ -150,9 +151,9 @@ function getNpmLicenses() {
                                 return getAttributionForAuthor(m);
                             }).join(', '));
 
-                            var match = package.licenseFile.match(/license/i);
-                            if(match) {
-                                props.licenseText = package.licenseFile && jetpack.exists(package.licenseFile) ? jetpack.read(package.licenseFile) : '';
+                            var licenseFile = package.licenseFile;
+                            if (licenseFile && jetpack.exists(licenseFile) && path.basename(licenseFile).match(/license/i)) {
+                                props.licenseText = jetpack.read(licenseFile);
                             } else {
                                 props.licenseText = '';
                             }
@@ -333,10 +334,9 @@ bluebird.all([
         var attribution = _.filter(licenseInfos, licenseInfo => {
             return !licenseInfo.ignore;
         }).map(licenseInfo => {
-            if(licenseInfo.name != undefined){
-                return [licenseInfo.name, `${licenseInfo.version} <${licenseInfo.url}>`,
-                licenseInfo.licenseText || `license: ${licenseInfo.license}${os.EOL}authors: ${licenseInfo.authors}`
-                ].join(os.EOL);
+            if(licenseInfo.name != undefined) {
+                return [licenseInfo.name,`${licenseInfo.version} <${licenseInfo.url}>`,
+                licenseInfo.licenseText || `license: ${licenseInfo.license}${os.EOL}authors: ${licenseInfo.authors}`].join(os.EOL);
             }
         }).join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
 
