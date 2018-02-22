@@ -334,12 +334,10 @@ bluebird.all([
             return !licenseInfo.ignore;
         }).map(licenseInfo => {
             if(licenseInfo.name != undefined){
-            return [
-                licenseInfo.name,
-                `${licenseInfo.version} <${licenseInfo.url}>`,
+                return [licenseInfo.name, `${licenseInfo.version} <${licenseInfo.url}>`,
                 licenseInfo.licenseText || `license: ${licenseInfo.license}${os.EOL}authors: ${licenseInfo.authors}`
-            ].join(os.EOL);
-        }
+                ].join(os.EOL);
+            }
         }).join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
 
         var headerPath = path.join(options.outputDir, 'header.txt');
