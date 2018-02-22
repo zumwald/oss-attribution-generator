@@ -32,6 +32,7 @@ var path = require('path');
 var jetpack = require('fs-jetpack');
 var cp = require('child_process');
 var os = require('os');
+var taim = require('taim');
 
 // const
 var licenseCheckerCustomFormat = {
@@ -108,6 +109,7 @@ function getNpmLicenses() {
             }
             return merged;
         }).then((result) => {
+            
             // we want to exclude the top-level project from being included
             var dir = result[Object.keys(result)[0]]['dir'];
             var topLevelProjectInfo = jetpack.read(path.join(dir, 'package.json'), 'json');
@@ -117,6 +119,7 @@ function getNpmLicenses() {
 
             return bluebird.map(keys, (key) => {
                 console.log('processing', key);
+               
                 var package = result[key];
                 var defaultPackagePath = `${package['dir']}/node_modules/${package.name}/package.json`
                 return jetpack.existsAsync(defaultPackagePath)
@@ -149,7 +152,13 @@ function getNpmLicenses() {
                                 return getAttributionForAuthor(m);
                             }).join(', '));
 
-                        props.licenseText = package.licenseFile && jetpack.exists(package.licenseFile) ? jetpack.read(package.licenseFile) : '';
+                            var licenseFile = package.licenseFile;
+                            if (licenseFile && jetpack.exists(licenseFile) && path.basename(licenseFile).match(/license/i)) {
+                                props.licenseText = jetpack.read(licenseFile);
+                            } else {
+                                props.licenseText = '';
+                            }
+                
                         return props;
                     })
                     .catch(e => {
@@ -292,10 +301,10 @@ for (var i = 0; i < yargs.argv.baseDir.length; i++) {
 }
 
 
-bluebird.all([
-    getNpmLicenses(),
+taim('Total Processing', bluebird.all([
+    taim('Npm Licenses', getNpmLicenses()),
     getBowerLicenses()
-])
+]))
     .catch((err) => {
         console.log(err);
         process.exit(1);
@@ -324,16 +333,14 @@ bluebird.all([
     })
     .then((licenseInfos) => {
         var attribution = _.filter(licenseInfos, licenseInfo => {
-            return !licenseInfo.ignore;
+            return !licenseInfo.ignore && licenseInfo.name != undefined;
         }).map(licenseInfo => {
-            return [
-                licenseInfo.name,
-                `${licenseInfo.version} <${licenseInfo.url}>`,
-                licenseInfo.licenseText || `license: ${licenseInfo.license}${os.EOL}authors: ${licenseInfo.authors}`
-            ].join(os.EOL);
+            return [licenseInfo.name,`${licenseInfo.version} <${licenseInfo.url}>`,
+                    licenseInfo.licenseText || `license: ${licenseInfo.license}${os.EOL}authors: ${licenseInfo.authors}`].join(os.EOL);
         }).join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
 
         var headerPath = path.join(options.outputDir, 'header.txt');
+        
         if (jetpack.exists(headerPath)) {
             var template = jetpack.read(headerPath);
             console.log('using template', template);
