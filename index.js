@@ -332,12 +332,16 @@ taim('Total Processing', bluebird.all([
         process.exit(1);
     })
     .then((licenseInfos) => {
-        var attribution = _.filter(licenseInfos, licenseInfo => {
+        var attributionSequence = _(licenseInfos).filter(licenseInfo => {
             return !licenseInfo.ignore && licenseInfo.name != undefined;
+        }).sortBy(licenseInfo => {
+            return licenseInfo.name.toLowerCase();
         }).map(licenseInfo => {
             return [licenseInfo.name,`${licenseInfo.version} <${licenseInfo.url}>`,
                     licenseInfo.licenseText || `license: ${licenseInfo.license}${os.EOL}authors: ${licenseInfo.authors}`].join(os.EOL);
-        }).join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
+        }).value();
+
+        var attribution = attributionSequence.join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
 
         var headerPath = path.join(options.outputDir, 'header.txt');
         
