@@ -69,7 +69,7 @@ function getNpmLicenses() {
             return [];
         }
     }
-    console.log("Looking at directories: " + npmDirs)
+    console.log('Looking at directories: ' + npmDirs)
 
     var res = []
     var checkers = [];
@@ -119,66 +119,71 @@ function getNpmLicenses() {
 
             return bluebird.map(keys, (key) => {
                 console.log('processing', key);
-               
+
                 var package = result[key];
-                var defaultPackagePath = `${package['dir']}/node_modules/${package.name}/package.json`
-                return jetpack.existsAsync(defaultPackagePath)
-                    .then(itemAtPath => {
-                        if (itemAtPath === 'file') {
-                            return [defaultPackagePath]
-                        } else {
-                            return jetpack.findAsync(package['dir'], {
-                                matching: `**/node_modules/${package.name}/package.json`
-                            })
-                        }
-                    })
-                    .then(packagePath => {
-                        if (packagePath && packagePath[0]) {
-                            return jetpack.read(packagePath[0], 'json');
-                        } else {
-                            return Promise.reject(`${package.name}: unable to locate package.json`);
-                        }
-                    })
-                    .then((packageJson) => {
-                        console.log('processing', packageJson.name, 'for authors and licenseText');
+                var defaultPackagePath = `${package['dir']}/node_modules/${package.name}/package.json`;
+      
+                var itemAtPath = jetpack.exists(defaultPackagePath);
+                var packagePath = [defaultPackagePath];
+      
+                if (itemAtPath !== 'file') {
+                  packagePath = jetpack.find(package['dir'], {
+                    matching: `**/node_modules/${package.name}/package.json`
+                  });
+                }
+      
+                var packageJson = "";
+      
+                if (packagePath && packagePath[0]) {
+                  packageJson = jetpack.read(packagePath[0], 'json');
+                } else {
 
-                        var props = {};
+                  return Promise.reject(`${package.name}: unable to locate package.json`);
+                }
+      
+                console.log('processing', packageJson.name, 'for authors and licenseText');
+      
+                var props = {};
+      
+                props.authors =
+                  (packageJson.author && getAttributionForAuthor(packageJson.author)) ||
+                  (packageJson.contributors && packageJson.contributors
+                      .map(c => {
 
-                        props.authors = packageJson.author && getAttributionForAuthor(packageJson.author)
-                            || (packageJson.contributors && packageJson.contributors.map((c) => {
-                                return getAttributionForAuthor(c);
-                            }).join(', '))
-                            || (packageJson.maintainers && packageJson.maintainers.map((m) => {
-                                return getAttributionForAuthor(m);
-                            }).join(', '));
+                        return getAttributionForAuthor(c);
+                      }).join(', ')) ||
+                  (packageJson.maintainers && packageJson.maintainers
+                      .map(m => {
 
-                            var licenseFile = package.licenseFile;
-                            if (licenseFile && jetpack.exists(licenseFile) && path.basename(licenseFile).match(/license/i)) {
-                                props.licenseText = jetpack.read(licenseFile);
-                            } else {
-                                props.licenseText = '';
-                            }
-                
-                        return props;
-                    })
-                    .catch(e => {
-                        console.warn(e);
-                        return {
-                            authors: '',
-                            licenseText: ''
-                        };
-                    })
-                    .then(derivedProps => {
-                        return {
-                            ignore: false,
-                            name: package.name,
-                            version: package.version,
-                            authors: derivedProps.authors,
-                            url: package.repository,
-                            license: package.licenses,
-                            licenseText: derivedProps.licenseText
-                        };
-                    });
+                        return getAttributionForAuthor(m);
+                      }).join(', '));
+      
+                var licenseFile = package.licenseFile;
+      
+                try {
+                  if (licenseFile && jetpack.exists(licenseFile) && path.basename(licenseFile).match(/license/i)) {
+                    props.licenseText = jetpack.read(licenseFile);
+                  } else {
+                    props.licenseText = '';
+                  }
+                } catch (e) {
+                  console.warn(e);
+
+                  return {            
+                    authors: '',
+                    licenseText: ''
+                  };
+                }
+      
+                return {
+                  ignore: false,
+                  name: package.name,
+                  version: package.version,
+                  authors: props.authors,
+                  url: package.repository,
+                  license: package.licenses,
+                  licenseText: props.licenseText
+                };
             }, {
                 concurrency: os.cpus().length
             });
@@ -228,56 +233,67 @@ function getBowerLicenses() {
                 // npm license check didn't work
                 // try to get the license and package info from .bower.json first
                 // because it has more metadata than the plain bower.json
-                return jetpack.readAsync(path.join(absPath, '.bower.json'), 'json')
-                    .catch(() => {
-                        return jetpack.readAsync(path.join(absPath, 'bower.json'), 'json');
-                    })
-                    .then((package) => {
-                        console.log('processing', package.name);
-                        // assumptions here based on https://github.com/bower/spec/blob/master/json.md
-                        // extract necessary properties as described in TL;DR above
-                        var url = package['_source']
-                            || (package.repository && package.repository.url)
-                            || package.url
-                            || package.homepage;
+      
+                var package = '';
+      
+                try {
+                  package = jetpack.read(path.join(absPath, '.bower.json'), 'json');
+                } catch (e) {
+                  package = jetpack.read(path.join(absPath, 'bower.json'), 'json');
+                }
+      
+                console.log('processing', package.name);
+                // assumptions here based on https://github.com/bower/spec/blob/master/json.md
+                // extract necessary properties as described in TL;DR above
+                var url = package["_source"] || (package.repository && package.repository.url) ||
+                  package.url || package.homepage;
+      
+                var authors = '';
 
-                        var authors = '';
-                        if (package.authors) {
-                            authors = _.map(package.authors, (a) => {
-                                return getAttributionForAuthor(a);
-                            }).join(', ');
-                        } else {
-                            // extrapolate author from url if it's a github repository
-                            var githubMatch = url.match(/github\.com\/.*\//);
-                            if (githubMatch) {
-                                authors = githubMatch[0].replace('github.com', '').replace(/\//g, '');
-                            }
-                        }
+                if (package.authors) {
+                  authors = _.map(package.authors, a => {
+                    return getAttributionForAuthor(a);
+                  }).join(', ');
+                } else {
+                  // extrapolate author from url if it's a github repository
+                  var githubMatch = url.match(/github\.com\/.*\//);
 
-                        // normalize the license object
-                        package.license = package.license || package.licenses;
-                        var licenses = package.license && _.isString(package.license) ? package.license
-                            : (_.isArray(package.license) ? package.license.join(',') : package.licenses);
+                  if (githubMatch) {
+                    authors = githubMatch[0]
+                      .replace('github.com', '')
+                      .replace(/\//g, '');
+                  }
+                }
+      
+                // normalize the license object
+                package.license = package.license || package.licenses;
 
-                        // find the license file if it exists
-                        var licensePath = _.find(component.children, (c) => {
-                            return /licen[cs]e/i.test(c.name);
-                        });
-                        var licenseText = null;
-                        if (licensePath) {
-                            licenseText = jetpack.read(path.join(bowerComponentsDir, licensePath.relativePath));
-                        }
+                var licenses = package.license && _.isString(package.license)
+                    ? package.license
+                    : _.isArray(package.license)
+                      ? package.license.join(',')
+                      : package.licenses;
+      
+                // find the license file if it exists
+                var licensePath = _.find(component.children, c => {
+                  return /licen[cs]e/i.test(c.name);
+                });
 
-                        return {
-                            ignore: false,
-                            name: package.name,
-                            version: package.version || package['_release'],
-                            authors: authors,
-                            url: url,
-                            license: licenses,
-                            licenseText: licenseText
-                        };
-                    });
+                var licenseText = null;
+
+                if (licensePath) {
+                  licenseText = jetpack.read(path.join(bowerComponentsDir, licensePath.relativePath));
+                }
+      
+                return {
+                  ignore: false,
+                  name: package.name,
+                  version: package.version || package['_release'],
+                  authors: authors,
+                  url: url,
+                  license: licenses,
+                  licenseText: licenseText
+                };
             }, {
                 concurrency: os.cpus().length
             });
