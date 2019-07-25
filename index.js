@@ -11,10 +11,16 @@ var yargs = require('yargs')
         baseDir: {
             alias: 'b',
             default: process.cwd(),
+        },
+        outputFormat: {
+            alias: 'f',
+            default: 'txt',
+            choices: ['txt', 'html']
         }
     })
     .array('baseDir')
     .example('$0 -o ./tpn', 'run the tool and output text and backing json to ${projectRoot}/tpn directory.')
+    .example('$0 -o ./tpn -f html', 'run the tool and output html and backing json to ${projectRoot}/tpn directory.')
     .example('$0 -b ./some/path/to/projectDir', 'run the tool for Bower/NPM projects in another directory.')
     .example('$0 -o tpn -b ./some/path/to/projectDir', 'run the tool in some other directory and dump the output in a directory called "tpn" there.');
 
@@ -309,7 +315,8 @@ function getBowerLicenses() {
 // sanitize inputs
 var options = {
     baseDir: [],
-    outputDir: path.resolve(yargs.argv.outputDir)
+    outputDir: path.resolve(yargs.argv.outputDir),
+    outputFormat: ['txt', 'html'].includes(yargs.argv.outputFormat) ? yargs.argv.outputFormat : 'txt'
 };
 
 for (var i = 0; i < yargs.argv.baseDir.length; i++) {
@@ -353,11 +360,36 @@ taim('Total Processing', bluebird.all([
         }).sortBy(licenseInfo => {
             return licenseInfo.name.toLowerCase();
         }).map(licenseInfo => {
+            if (options.outputFormat === 'html') {
+                return `
+                        <tr>
+                            <td>${licenseInfo.name}</td>
+                            <td>${licenseInfo.version}</td>
+                            <td>${licenseInfo.url}</td>
+                            <td>${licenseInfo.license}</td>
+                            <td>${licenseInfo.licenseText}</td>
+                        </tr>
+                        `;
+            }
             return [licenseInfo.name,`${licenseInfo.version} <${licenseInfo.url}>`,
                     licenseInfo.licenseText || `license: ${licenseInfo.license}${os.EOL}authors: ${licenseInfo.authors}`].join(os.EOL);
         }).value();
-
-        var attribution = attributionSequence.join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
+        
+        if (options.outputFormat === 'html') {
+            var tableHeader =
+                `
+                <tr>
+                    <th>Name</th>
+                    <th>Version</th>
+                    <th>URL</th>
+                    <th>License</th>
+                    <th>LicenseText</th>
+                </tr>
+                `
+            var attribution = `<table>${tableHeader}${attributionSequence.join("")}</table>`;
+        } else {
+            var attribution = attributionSequence.join(`${os.EOL}${os.EOL}******************************${os.EOL}${os.EOL}`);
+        }
 
         var headerPath = path.join(options.outputDir, 'header.txt');
         
@@ -369,7 +401,7 @@ taim('Total Processing', bluebird.all([
 
         jetpack.write(path.join(options.outputDir, 'licenseInfos.json'), JSON.stringify(licenseInfos));
 
-        return jetpack.write(path.join(options.outputDir, 'attribution.txt'), attribution);
+        return jetpack.write(path.join(options.outputDir, `attribution.${options.outputFormat}`), attribution);
     })
     .catch(e => {
         console.error('ERROR writing attribution file', e);
