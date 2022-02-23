@@ -8,6 +8,10 @@ var yargs = require('yargs')
             alias: 'o',
             default: './oss-attribution'
         },
+        outputFileName: {
+            alias: 'n',
+            default: 'licenseInfo'
+        },
         baseDir: {
             alias: 'b',
             default: process.cwd(),
@@ -15,6 +19,7 @@ var yargs = require('yargs')
     })
     .array('baseDir')
     .example('$0 -o ./tpn', 'run the tool and output text and backing json to ${projectRoot}/tpn directory.')
+    .example('$0 -n license-info', 'run the tool and produces the license file with the name "license-info.json".')
     .example('$0 -b ./some/path/to/projectDir', 'run the tool for Bower/NPM projects in another directory.')
     .example('$0 -o tpn -b ./some/path/to/projectDir', 'run the tool in some other directory and dump the output in a directory called "tpn" there.');
 
@@ -306,10 +311,12 @@ function getBowerLicenses() {
  *
  ***********************/
 
+
 // sanitize inputs
 var options = {
     baseDir: [],
-    outputDir: path.resolve(yargs.argv.outputDir)
+    outputDir: path.resolve(yargs.argv.outputDir),
+    outputFileName : yargs.argv.outputFileName
 };
 
 for (var i = 0; i < yargs.argv.baseDir.length; i++) {
@@ -367,7 +374,7 @@ taim('Total Processing', bluebird.all([
             attribution = template + os.EOL + os.EOL + attribution;
         }
 
-        jetpack.write(path.join(options.outputDir, 'licenseInfos.json'), JSON.stringify(licenseInfos));
+        jetpack.write(path.join(options.outputDir, options.outputFileName + '.json'), JSON.stringify(licenseInfos));
 
         return jetpack.write(path.join(options.outputDir, 'attribution.txt'), attribution);
     })
