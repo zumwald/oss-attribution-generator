@@ -1,15 +1,15 @@
 {
   "dependencies": {
-    "bluebird": "^3.5.0",
-    "bower": "^1.8.0",
-    "bower-json": "^0.8.1",
+    "bluebird": "^3.7.2",
+    "bower": "^1.8.14",
+    "bower-json": "^0.8.4",
     "bower-license": "^0.4.4",
     "fs-jetpack": "^0.12.0",
     "license-checker": "^13.0.3",
-    "lodash": "^4.17.4",
-    "spdx-licenses": "^0.0.3",
-    "yargs": "^7.0.2",
-    "taim": "^1.0.2"
+    "lodash": "^4.17.21",
+    "spdx-licenses": "^1.0.0",
+    "taim": "^1.0.2",
+    "yargs": "^7.0.2"
   },
   "name": "oss-attribution-generator",
   "description": "utility to parse bower and npm packages used in a project and generate an attribution file to include in your product",
